@@ -3,6 +3,7 @@ from sqlite3 import Date
 from urllib.request import urlopen
 import datetime
 import json
+import os
 url = "https://data.ntpc.gov.tw/api/datasets/308DCD75-6434-45BC-A95F-584DA4FED251/json?page={}&size=300"
 
 stillHasContent = True
@@ -13,6 +14,9 @@ check_duplicate = {}
 
 
 def transform(opendataItem):
+    if (opendataItem['isHoliday'] != '是' and opendataItem["holidayCategory"] != '特定節日'):
+        return None
+    opendataItem.pop('isHoliday', None)
     if (opendataItem["date"] in check_duplicate):
         return None
     else:
@@ -23,9 +27,14 @@ def transform(opendataItem):
             opendataItem["date"], "%Y/%m/%d")
         opendataItem["year"] = opendataItem["date"].year
         opendataItem["month"] = opendataItem["date"].month
-    opendataItem.pop('isHoliday', None)
-    if ("name" in opendataItem and opendataItem["name"] == ""):
-        opendataItem.pop('name', None)
+    if ("name" not in opendataItem or opendataItem["name"] == ""):
+        if opendataItem["holidayCategory"] == "星期六、星期日":
+            if(opendataItem["date"].weekday() == 5):
+                opendataItem['name'] = "週六"
+            else:
+                opendataItem['name'] = "週日"
+        else:
+            opendataItem['name'] = opendataItem["holidayCategory"]
     if ("description" in opendataItem and opendataItem["description"] == ""):
         opendataItem.pop('description', None)
     if ("holidayCategory" in opendataItem):
@@ -71,7 +80,7 @@ if (holiday_count >= 3):
 
 print(holidays)
 
-client = MongoClient("mongodb+srv://admin:<adminpassword>@public.vovmgbr.mongodb.net/?retryWrites=true&w=majority")
+client = MongoClient("mongodb+srv://{}@public.vovmgbr.mongodb.net/?retryWrites=true&w=majority".format(os.getenv('MONGODB_CREDENTIAL')))
 collection = client["public"]["taiwan-holidays"]
 collection.delete_many({})
 collection.insert_many(holidays, ordered=True, bypass_document_validation=False, session=None)
